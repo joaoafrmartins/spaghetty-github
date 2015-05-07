@@ -1,0 +1,35 @@
+{
+  "name": "spaghetty-github",
+  "version": "0.0.0",
+  "main": "lib/main",
+  "description": "initialize github repositories",
+  "keywords": [
+    "spaghetty",
+    "github"
+  ],
+  "scripts": {
+    "build": "spaghetty github --commit --recursive",
+    "test": "mocha --reporter spec --compilers coffee:coffee-script/register ./spec"
+  },
+  "dependencies": {
+    "async": "",
+    "github": "",
+    "lodash.merge": "",
+    "a-cli-command": ""
+  },
+  "devDependencies": {
+    "kosher": "",
+    "a-cli-domain": ""
+  },
+  "peerDependencies": {
+    "spaghetty-init": ""
+  },
+  "homepage": "https://github.com/joaoafrmartins/spaghetty-github",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joaoafrmartins/spaghetty-github.git"
+  },
+  "bugs": {
+    "url": "https://github.com/joaoafrmartins/spaghetty-github/issues"
+  }
+}
