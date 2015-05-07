@@ -171,7 +171,6 @@ class Github extends ACliCommand
           "the commit message"
         ]
 
-
       recursive:
 
         type: "boolean"
