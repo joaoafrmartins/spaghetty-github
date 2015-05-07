@@ -8,7 +8,7 @@
     "github"
   ],
   "scripts": {
-    "build": "spaghetty github --commit --recursive",
+    "build": "spaghetty github --gh-pages",
     "test": "mocha --reporter spec --compilers coffee:coffee-script/register ./spec"
   },
   "dependencies": {

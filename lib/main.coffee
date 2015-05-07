@@ -20,7 +20,7 @@ class Github extends ACliCommand
 
     options:
 
-      version:
+      "version":
 
         type: "string"
 
@@ -30,7 +30,7 @@ class Github extends ACliCommand
           "the GitHub api version"
         ]
 
-      timeout:
+      "timeout":
 
         type: "number"
 
@@ -40,7 +40,7 @@ class Github extends ACliCommand
           "the GitHub api request timeout"
         ]
 
-      note:
+      "note":
 
         type: "string"
 
@@ -51,7 +51,7 @@ class Github extends ACliCommand
           "authorizations api"
         ]
 
-      scopes:
+      "scopes":
 
         type: "array"
 
@@ -62,7 +62,7 @@ class Github extends ACliCommand
           "authorizations api"
         ]
 
-      login:
+      "login":
 
         type: "boolean"
 
@@ -76,7 +76,7 @@ class Github extends ACliCommand
           "at "
         ]
 
-      repo:
+      "repo":
 
         type: "string"
 
@@ -86,7 +86,7 @@ class Github extends ACliCommand
           "the github repository name"
         ]
 
-      create:
+      "create":
 
         type: "boolean"
 
@@ -96,7 +96,7 @@ class Github extends ACliCommand
           "creates a new github repository"
         ]
 
-      delete:
+      "delete":
 
         type: "boolean"
 
@@ -106,7 +106,7 @@ class Github extends ACliCommand
           "deletes a github repository"
         ]
 
-      init:
+      "init":
 
         type: "boolean"
 
@@ -119,7 +119,7 @@ class Github extends ACliCommand
           "with the package-init-github template"
         ]
 
-      templates:
+      "templates":
 
         type: "array"
 
@@ -130,7 +130,7 @@ class Github extends ACliCommand
           "by package-init when using init"
         ]
 
-      force:
+      "force":
 
         type: "boolean"
 
@@ -139,7 +139,7 @@ class Github extends ACliCommand
           "without prompting for aditional information"
         ]
 
-      commit:
+      "commit":
 
         type: "boolean"
 
@@ -151,7 +151,7 @@ class Github extends ACliCommand
           "contents to origin master"
         ]
 
-      origin:
+      "origin":
 
         type: "string"
 
@@ -161,7 +161,7 @@ class Github extends ACliCommand
           "the remote origin name"
         ]
 
-      message:
+      "message":
 
         type: "string"
 
@@ -171,7 +171,7 @@ class Github extends ACliCommand
           "the commit message"
         ]
 
-      recursive:
+      "recursive":
 
         type: "boolean"
 
@@ -180,6 +180,31 @@ class Github extends ACliCommand
           "finds all npm packages owned by username",
           "and tries to perform commit on all of them"
         ]
+
+      "gh-pages":
+
+        type: "string"
+
+        triggers: [ "repo", "gh-pages-template" ]
+
+        default: resolve "#{process.env.PWD}", "gh-pages"
+
+        description: [
+          "gh-pages branch location"
+        ]
+
+
+      "gh-pages-template":
+
+        type: "string"
+
+        default: resolve "#{__dirname}", "gh-pages"
+
+        description: [
+          "gh-pages branch template"
+        ]
+
+
 
   data: (github, username) ->
 
@@ -381,23 +406,13 @@ class Github extends ACliCommand
 
         @exec "git push origin #{origin}", next
 
-  "commit?": (command, next) ->
-
-    { origin, recursive, message } = command.args
-
-    if not recursive then return @commit message, origin, next
-
-    @shell
-
-    blacklist = {}
+  getAllRepos: (pwd=process.env.PWD, blacklist={}) ->
 
     repos = []
 
     { github } = @cli.cache.get()
 
     { username } = @cli.cache.get "github"
-
-    pwd = process.env.PWD
 
     findAll(pwd).map (file) =>
 
@@ -416,6 +431,58 @@ class Github extends ACliCommand
             blacklist[pkg.name] = true
 
             repos.push dirname(file)
+
+    repos
+
+  "gh-pages?": (command, next) ->
+
+    { github } = @cli.cache.get()
+    { username } = @cli.cache.get "github"
+    repo = command.args.repo
+    repoUrl = "git@github.com:#{username}/#{repo}.git"
+    template = command.args['gh-pages-template']
+    dir = command.args['gh-pages']
+
+    cmds = [
+      "mkdir #{dir}",
+      "git clone #{repoUrl} #{dir}/#{repo}",
+      "cd #{dir}/#{repo}",
+      "mv #{dir}/#{repo}/.git #{dir}",
+      "cp -R #{template}/* #{dir}/",
+      "rm -Rf #{dir}/#{repo}",
+      "git -C #{dir} checkout --orphan gh-pages",
+      "git -C #{dir} add .",
+      "git -C #{dir} commit -am \"gh-pages\"",
+      "git -C #{dir} push origin gh-pages"
+    ]
+
+    _series = () =>
+
+      cmd = cmds.shift()
+
+      if not cmd
+
+        return next null, "gh-pages created successfully!"
+
+      @exec cmd, (err, res) =>
+
+        console.log err, res, cmd
+
+        if err then return next null, err
+
+        _series()
+
+    _series()
+
+  "commit?": (command, next) ->
+
+    { origin, recursive, message } = command.args
+
+    if not recursive then return @commit message, origin, next
+
+    @shell
+
+    repos = @getAllRepos()
 
     commitFn = (res, done) =>
 
