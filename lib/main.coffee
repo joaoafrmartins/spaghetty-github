@@ -664,6 +664,60 @@ class Github extends ACliCommand
 
             next null, data
 
+  create: (command, next) ->
+
+    @shell
+
+    { repo } = command.args
+
+    { github } = @cli.cache.get()
+
+    github = merge github or {},  command.args
+
+    delete github.create
+
+    delete github.repo
+
+    delete github.login
+
+    delete github.init
+
+    delete github.templates
+
+    delete github.force
+
+    delete github.commit
+
+    @api ?= new GitHubApi github
+
+    @authenticate github, (err, github) =>
+
+      if err then return next @error(err, github), null
+
+      payload = { "name": repo }
+
+      @api.repos.create payload, (err, response) =>
+
+        if err then return next @error(err, response), null
+
+        if response.id
+
+          github.repos ?= {}
+
+          github.repos[response.name] = response
+
+          @cli.cache.put "github", github
+
+          @cli.cache.save()
+
+          user = github.username
+
+          @init command, response, (err, res) =>
+
+            @cli.console.info "#{user}/#{repo}"
+
+            next null, response
+
   "license?": (command, next) ->
 
     if command.args.recursive
@@ -744,57 +798,9 @@ class Github extends ACliCommand
 
   "create?": (command, next) ->
 
-    @shell
+    @create command, (err, res) ->
 
-    { repo } = command.args
-
-    { github } = @cli.cache.get()
-
-    github = merge github or {},  command.args
-
-    delete github.create
-
-    delete github.repo
-
-    delete github.login
-
-    delete github.init
-
-    delete github.templates
-
-    delete github.force
-
-    delete github.commit
-
-    @api ?= new GitHubApi github
-
-    @authenticate github, (err, github) =>
-
-      if err then return next @error(err, github), null
-
-      payload = { "name": repo }
-
-      @api.repos.create payload, (err, response) =>
-
-        if err then return next @error(err, response), null
-
-        if response.id
-
-          github.repos ?= {}
-
-          github.repos[response.name] = response
-
-          @cli.cache.put "github", github
-
-          @cli.cache.save()
-
-          user = github.username
-
-          @init command, response, (err, res) =>
-
-            @cli.console.info "#{user}/#{repo}"
-
-            next null, response
+      next err, res
 
   "delete?": (command, next) ->
 
