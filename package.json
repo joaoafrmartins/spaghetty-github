@@ -8,12 +8,13 @@
     "github"
   ],
   "scripts": {
-    "build": "spaghetty github --gh-pages",
+    "build": "spaghetty github --license",
     "test": "mocha --reporter spec --compilers coffee:coffee-script/register ./spec"
   },
   "dependencies": {
     "async": "",
     "github": "",
+    "request": "",
     "lodash.merge": "",
     "a-cli-command": ""
   },
@@ -31,5 +32,6 @@
   },
   "bugs": {
     "url": "https://github.com/joaoafrmartins/spaghetty-github/issues"
-  }
+  },
+  "license": "MIT"
 }

@@ -90,7 +90,15 @@ class Github extends ACliCommand
 
         type: "boolean"
 
-        triggers: ["repo", "version", "timeout",  "note", "scopes", "init"]
+        triggers: [
+          "repo",
+          "version",
+          "timeout",
+          "note",
+          "scopes",
+          "init",
+          "license"
+        ]
 
         description: [
           "creates a new github repository"
@@ -202,6 +210,24 @@ class Github extends ACliCommand
 
         description: [
           "gh-pages branch template"
+        ]
+
+      "license":
+
+        type: "string"
+
+        default: "MIT"
+
+        description: [
+          "license applied to the software"
+        ]
+
+      "author":
+
+        type: "string"
+
+        description: [
+          "the author of the software"
         ]
 
 
@@ -410,31 +436,115 @@ class Github extends ACliCommand
 
     repos = []
 
+    blacklist = {}
+
     { github } = @cli.cache.get()
 
     { username } = @cli.cache.get "github"
+
+    { repos: whitelist } = @cli.cache.get "github"
 
     findAll(pwd).map (file) =>
 
       if file.match(/package.json$/) isnt null
 
-        file = "#{pwd}/#{file}"
+        try
 
-        pkg = require(file)
+          file = "#{pwd}/#{file}"
 
-        url = pkg?.repository?.url or ''
+          pkg = require(file)
 
-        if url.match(username) isnt null
+          if not whitelist[pkg.name] then return null
 
-          if not blacklist[pkg.name]
+          if blacklist[pkg.name] then return null
+
+          url = pkg?.repository?.url or ''
+
+          if url.match(username) isnt null
 
             blacklist[pkg.name] = true
 
             repos.push dirname(file)
 
+        catch err
+
     repos
 
-  "gh-pages?": (command, next) ->
+  license: (command, next) ->
+
+    @shell
+
+    _license = (l, a, done) =>
+
+      lfile = "#{process.cwd()}/LICENSE.txt"
+
+      pkg.license = l or "MIT"
+
+      if l is "MIT"
+
+        y = new Date().getFullYear()
+
+        """
+        The MIT License (MIT)
+
+        Copyright (c) #{y} #{a}
+
+        Permission is hereby granted, free of charge, to any person obtaining a copy
+        of this software and associated documentation files (the "Software"), to deal
+        in the Software without restriction, including without limitation the rights
+        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is
+        furnished to do so, subject to the following conditions:
+
+        The above copyright notice and this permission notice shall be included in
+        all copies or substantial portions of the Software.
+
+        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+        THE SOFTWARE.
+        """.to lfile
+
+      @cli.console.info "created license file: #{lfile}"
+
+      done()
+
+    file = "#{process.cwd()}/package"
+
+    pkg = require file
+
+    { license, author } = command.args
+
+    { github } = @cli.cache.get()
+
+    { username } = @cli.cache.get "github"
+
+    options =
+
+      url: "https://api.github.com/users/#{username}"
+
+      headers:
+
+        'User-Agent': 'spaghetty'
+
+    request = require 'request'
+
+    request options, (err, response, body) ->
+
+      { name: author } = JSON.parse(body)
+
+      pkg.author = author
+
+      _license license, author, () ->
+
+        JSON.stringify(pkg, null, 2).to "#{file}.json"
+
+        next null, "license"
+
+  ghPages: (command, next) ->
 
     { github } = @cli.cache.get()
     { username } = @cli.cache.get "github"
@@ -466,13 +576,130 @@ class Github extends ACliCommand
 
       @exec cmd, (err, res) =>
 
-        console.log err, res, cmd
-
         if err then return next null, err
 
         _series()
 
     _series()
+
+  delete: (command, next) ->
+
+    @shell
+
+    { repo } = command.args
+
+    { github } = @cli.cache.get()
+
+    github = merge github or {},  command.args
+
+    delete github.delete
+
+    delete github.repo
+
+    delete github.login
+
+    @cli.prompt [{
+
+      type: "confirm"
+
+      name: "confirmed"
+
+      message: [
+
+        "are you shure you want"
+
+        "to delete #{github.username}/#{repo}?"
+
+      ].join EOL
+
+    }], (response) =>
+
+      if response.confirmed
+
+        @api ?= new GitHubApi github
+
+        @authenticate github, (err, github) =>
+
+          if err then return next @error(err, github), null
+
+          user = github.username
+
+          payload =
+
+            "user": "#{user}"
+
+            "repo": "#{repo}"
+
+          @api.repos.delete payload, (err, response) =>
+
+            message = "#{user}/#{repo}"
+
+            if data = github?.repos?[repo]
+
+              delete github.repos[repo]
+
+              @cli.cache.put 'github', github
+
+              @cli.cache.save()
+
+            data ?= message
+
+            rm "-Rf", resolve(pwd(), ".git")
+
+            pkgfile = resolve(pwd(), 'package.json')
+
+            if test "-e", pkgfile
+
+              pkg = JSON.parse cat pkgfile
+
+              delete pkg.bugs
+
+              delete pkg.repository
+
+              delete pkg.homepage
+
+              JSON.stringify(pkg, null, 2).to pkgfile
+
+            @cli.console.error message
+
+            next null, data
+
+  "license?": (command, next) ->
+
+    if command.args.recursive
+
+      @shell
+
+      repos = @getAllRepos()
+
+      _series = () =>
+
+        repo = repos.shift()
+
+        if not repo then return next null, "license"
+
+        cd repo
+
+        @license command, (err, res) =>
+
+          if err then return next null, err
+
+          _series()
+
+      _series()
+
+    else
+
+      @license command, (err, res) =>
+
+        if err then return next null, err
+
+        next null, "license"
+
+
+  "gh-pages?": (command, next) ->
+
+    @ghPages command, next
 
   "commit?": (command, next) ->
 
@@ -571,84 +798,8 @@ class Github extends ACliCommand
 
   "delete?": (command, next) ->
 
-    @shell
+    @delete command, (err, res) ->
 
-    { repo } = command.args
-
-    { github } = @cli.cache.get()
-
-    github = merge github or {},  command.args
-
-    delete github.delete
-
-    delete github.repo
-
-    delete github.login
-
-    @cli.prompt [{
-
-      type: "confirm"
-
-      name: "confirmed"
-
-      message: [
-
-        "are you shure you want"
-
-        "to delete #{github.username}/#{repo}?"
-
-      ].join EOL
-
-    }], (response) =>
-
-      if response.confirmed
-
-        @api ?= new GitHubApi github
-
-        @authenticate github, (err, github) =>
-
-          if err then return next @error(err, github), null
-
-          user = github.username
-
-          payload =
-
-            "user": "#{user}"
-
-            "repo": "#{repo}"
-
-          @api.repos.delete payload, (err, response) =>
-
-            message = "#{user}/#{repo}"
-
-            if data = github?.repos?[repo]
-
-              delete github.repos[repo]
-
-              @cli.cache.put 'github', github
-
-              @cli.cache.save()
-
-            data ?= message
-
-            rm "-Rf", resolve(pwd(), ".git")
-
-            pkgfile = resolve(pwd(), 'package.json')
-
-            if test "-e", pkgfile
-
-              pkg = JSON.parse cat pkgfile
-
-              delete pkg.bugs
-
-              delete pkg.repository
-
-              delete pkg.homepage
-
-              JSON.stringify(pkg, null, 2).to pkgfile
-
-            @cli.console.error message
-
-            next null, data
+      next err, res
 
 module.exports = Github
