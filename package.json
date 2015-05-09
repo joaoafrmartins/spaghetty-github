@@ -33,5 +33,6 @@
   "bugs": {
     "url": "https://github.com/joaoafrmartins/spaghetty-github/issues"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "author": "João Afonso Martins"
 }
